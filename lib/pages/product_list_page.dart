@@ -1,8 +1,9 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/product.dart';
 import '../services/database_service.dart';
 import '../widgets/product_card.dart';
+import '../widgets/overview_cards.dart';
 import 'product_form_page.dart';
 import 'login_page.dart';
 
@@ -16,8 +17,16 @@ class ProductListPage extends StatefulWidget {
 class _ProductListPageState extends State<ProductListPage> {
   final DatabaseService _dbService = DatabaseService();
   GlobalKey<AnimatedListState> _listKey = GlobalKey<AnimatedListState>();
-  List<Product> _products = [];
+  
+  List<Product> _allProducts = [];
+  List<Product> _filteredProducts = [];
+  final TextEditingController _searchController = TextEditingController();
+  
   bool _isLoading = true;
+
+  int get _totalProducts => _filteredProducts.length;
+  int get _lowStockCount => _filteredProducts.where((p) => p.stock < 5).length;
+  double get _totalValue => _filteredProducts.fold(0.0, (sum, p) => sum + (p.price * p.stock));
 
   @override
   void initState() {
@@ -25,15 +34,40 @@ class _ProductListPageState extends State<ProductListPage> {
     _loadProducts();
   }
 
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadProducts() async {
     setState(() => _isLoading = true);
     final products = await _dbService.getAllProducts();
 
     setState(() {
-      _products = products;
+      _allProducts = products;
+      _filteredProducts = products;
       _isLoading = false;
-      _listKey = GlobalKey<AnimatedListState>(); // Recreate key to force list rebuild
+      _listKey = GlobalKey<AnimatedListState>(); 
     });
+  }
+
+  void _filterProducts(String query) {
+    if (query.isEmpty) {
+      setState(() {
+        _filteredProducts = List.from(_allProducts);
+        _listKey = GlobalKey<AnimatedListState>();
+      });
+    } else {
+      final lowerQuery = query.toLowerCase();
+      setState(() {
+        _filteredProducts = _allProducts.where((p) {
+          return p.name.toLowerCase().contains(lowerQuery) || 
+                 p.category.toLowerCase().contains(lowerQuery);
+        }).toList();
+        _listKey = GlobalKey<AnimatedListState>();
+      });
+    }
   }
 
   Future<void> _deleteProduct(Product product, int index) async {
@@ -62,24 +96,27 @@ class _ProductListPageState extends State<ProductListPage> {
 
     if (confirm == true) {
       await _dbService.deleteProduct(product.id);
-
-      final removedProduct = _products.removeAt(index);
+      
+      _allProducts.removeWhere((p) => p.id == product.id);
+      final removedProduct = _filteredProducts.removeAt(index);
 
       if (_listKey.currentState != null) {
         _listKey.currentState!.removeItem(
           index,
           (context, animation) => _buildAnimatedItem(removedProduct, animation, index),
-          duration: const Duration(milliseconds: 300),
+          duration: const Duration(milliseconds: 250),
         );
       } else {
-        setState(() {}); // Fallback
+        setState(() {}); 
       }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Product "${product.name}" successfully deleted'),
+            content: Text('Product "${product.name}" deleted'),
             backgroundColor: Theme.of(context).colorScheme.primary,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
         );
       }
@@ -89,12 +126,16 @@ class _ProductListPageState extends State<ProductListPage> {
   Future<void> _navigateToForm({Product? product}) async {
     await Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => ProductFormPage(product: product),
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) => ProductFormPage(product: product),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
       ),
     );
     // Reload items to catch any inserts/updates
     _loadProducts();
+    _searchController.clear();
   }
 
   Future<void> _logout() async {
@@ -104,7 +145,77 @@ class _ProductListPageState extends State<ProductListPage> {
     if (!mounted) return;
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (_) => const LoginPage()),
+      PageRouteBuilder(
+        pageBuilder: (context, animation, secondaryAnimation) => const LoginPage(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(opacity: animation, child: child);
+        },
+      ),
+    );
+  }
+
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+      child: TextField(
+        controller: _searchController,
+        onChanged: _filterProducts,
+        decoration: InputDecoration(
+          hintText: 'Search products...',
+          hintStyle: TextStyle(color: Colors.grey[500]),
+          prefixIcon: Icon(Icons.search, color: Colors.grey[400]),
+          filled: true,
+          fillColor: Theme.of(context).cardColor, 
+          contentPadding: const EdgeInsets.symmetric(vertical: 0),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide.none, 
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    if (_searchController.text.isNotEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Image.network(
+              'https://media.tenor.com/Bw9ZKZyrig8AAAAj/confused-anime.gif',
+              width: 150,
+              height: 150,
+              fit: BoxFit.cover,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              '404 Not found UnU, try searching again??',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.inventory_2_outlined, size: 64, color: Colors.grey[700]),
+          const SizedBox(height: 16),
+          const Text(
+            'No products yet',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Tap + to add your first product',
+            style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+          ),
+        ],
+      ),
     );
   }
 
@@ -115,7 +226,7 @@ class _ProductListPageState extends State<ProductListPage> {
         position: Tween<Offset>(
           begin: const Offset(1, 0),
           end: Offset.zero,
-        ).animate(animation),
+        ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutQuart)),
         child: ProductCard(
           product: product,
           onEdit: () => _navigateToForm(product: product),
@@ -129,7 +240,11 @@ class _ProductListPageState extends State<ProductListPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Admin Dashboard'),
+        title: const Text(
+          'Inventra Dashboard',
+          style: TextStyle(fontWeight: FontWeight.w600),
+        ),
+        elevation: 0,
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
@@ -140,25 +255,35 @@ class _ProductListPageState extends State<ProductListPage> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _products.isEmpty
-              ? const Center(
-                  child: Text(
-                    'No products available.\nTap + to add.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 16, color: Colors.grey),
+          : Column(
+              children: [
+                if (_allProducts.isNotEmpty || _searchController.text.isNotEmpty) ...[
+                  _buildSearchBar(),
+                  OverviewCards(
+                    totalProducts: _totalProducts,
+                    lowStockCount: _lowStockCount,
+                    totalValue: _totalValue,
                   ),
-                )
-              : AnimatedList(
-                  key: _listKey,
-                  initialItemCount: _products.length,
-                  padding: const EdgeInsets.only(top: 8, bottom: 80),
-                  itemBuilder: (context, index, animation) {
-                    return _buildAnimatedItem(_products[index], animation, index);
-                  },
+                ],
+                Expanded(
+                  child: _filteredProducts.isEmpty
+                      ? _buildEmptyState()
+                      : AnimatedList(
+                          key: _listKey,
+                          initialItemCount: _filteredProducts.length,
+                          padding: const EdgeInsets.only(top: 8, bottom: 88),
+                          itemBuilder: (context, index, animation) {
+                            return _buildAnimatedItem(_filteredProducts[index], animation, index);
+                          },
+                        ),
                 ),
+              ],
+            ),
       floatingActionButton: FloatingActionButton(
-        backgroundColor: Theme.of(context).colorScheme.primary,
+        backgroundColor: const Color(0xFF7C4DFF),
         foregroundColor: Colors.white,
+        elevation: 4,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         onPressed: () => _navigateToForm(),
         tooltip: 'Add Product',
         child: const Icon(Icons.add),
