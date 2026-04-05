@@ -7,6 +7,8 @@ import '../widgets/overview_cards.dart';
 import 'product_form_page.dart';
 import 'login_page.dart';
 
+enum SortOption { newest, nameAsc, nameDesc, priceAsc, priceDesc, stockAsc, stockDesc }
+
 class ProductListPage extends StatefulWidget {
   const ProductListPage({super.key});
 
@@ -24,6 +26,7 @@ class _ProductListPageState extends State<ProductListPage> {
   
   bool _isLoading = true;
   bool _isLowStockFilterActive = false;
+  SortOption _currentSort = SortOption.newest;
 
   int get _totalProducts => _allProducts.length;
   int get _lowStockCount => _allProducts.where((p) => p.stock < 5).length;
@@ -54,24 +57,49 @@ class _ProductListPageState extends State<ProductListPage> {
 
   void _filterProducts([String? query]) {
     final currentQuery = query ?? _searchController.text;
+    List<Product> results;
+
     if (currentQuery.isEmpty && !_isLowStockFilterActive) {
-      setState(() {
-        _filteredProducts = List.from(_allProducts);
-        _listKey = GlobalKey<AnimatedListState>();
-      });
+      results = List.from(_allProducts);
     } else {
       final lowerQuery = currentQuery.toLowerCase();
-      setState(() {
-        _filteredProducts = _allProducts.where((p) {
-          final matchesSearch = lowerQuery.isEmpty || 
-                 p.name.toLowerCase().contains(lowerQuery) || 
-                 p.category.toLowerCase().contains(lowerQuery);
-          final matchesStock = !_isLowStockFilterActive || p.stock < 5;
-          return matchesSearch && matchesStock;
-        }).toList();
-        _listKey = GlobalKey<AnimatedListState>();
-      });
+      results = _allProducts.where((p) {
+        final matchesSearch = lowerQuery.isEmpty || 
+               p.name.toLowerCase().contains(lowerQuery) || 
+               p.category.toLowerCase().contains(lowerQuery);
+        final matchesStock = !_isLowStockFilterActive || p.stock < 5;
+        return matchesSearch && matchesStock;
+      }).toList();
     }
+
+    switch (_currentSort) {
+      case SortOption.nameAsc:
+        results.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+        break;
+      case SortOption.nameDesc:
+        results.sort((a, b) => b.name.toLowerCase().compareTo(a.name.toLowerCase()));
+        break;
+      case SortOption.priceAsc:
+        results.sort((a, b) => a.price.compareTo(b.price));
+        break;
+      case SortOption.priceDesc:
+        results.sort((a, b) => b.price.compareTo(a.price));
+        break;
+      case SortOption.stockAsc:
+        results.sort((a, b) => a.stock.compareTo(b.stock));
+        break;
+      case SortOption.stockDesc:
+        results.sort((a, b) => b.stock.compareTo(a.stock));
+        break;
+      case SortOption.newest:
+        results.sort((a, b) => b.id.compareTo(a.id));
+        break;
+    }
+
+    setState(() {
+      _filteredProducts = results;
+      _listKey = GlobalKey<AnimatedListState>();
+    });
   }
 
   void _toggleLowStockFilter() {
@@ -175,6 +203,29 @@ class _ProductListPageState extends State<ProductListPage> {
           hintText: 'Search products...',
           hintStyle: TextStyle(color: Colors.grey[500]),
           prefixIcon: Icon(Icons.search, color: Colors.grey[400]),
+          suffixIcon: PopupMenuButton<SortOption>(
+            icon: Icon(Icons.sort, color: Colors.grey[400]),
+            color: Theme.of(context).cardColor,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            onSelected: (SortOption option) {
+              setState(() {
+                _currentSort = option;
+              });
+              _filterProducts();
+            },
+            itemBuilder: (BuildContext context) => [
+              _buildSortItem(SortOption.newest, 'Newest', Icons.new_releases_outlined),
+              const PopupMenuDivider(),
+              _buildSortItem(SortOption.nameAsc, 'Name (A-Z)', Icons.sort_by_alpha),
+              _buildSortItem(SortOption.nameDesc, 'Name (Z-A)', Icons.sort_by_alpha),
+              const PopupMenuDivider(),
+              _buildSortItem(SortOption.priceAsc, 'Price (Low to High)', Icons.arrow_upward),
+              _buildSortItem(SortOption.priceDesc, 'Price (High to Low)', Icons.arrow_downward),
+              const PopupMenuDivider(),
+              _buildSortItem(SortOption.stockAsc, 'Stock (Low to High)', Icons.inventory_2_outlined),
+              _buildSortItem(SortOption.stockDesc, 'Stock (High to Low)', Icons.inventory_2_outlined),
+            ],
+          ),
           filled: true,
           fillColor: Theme.of(context).cardColor, 
           contentPadding: const EdgeInsets.symmetric(vertical: 0),
@@ -183,6 +234,30 @@ class _ProductListPageState extends State<ProductListPage> {
             borderSide: BorderSide.none, 
           ),
         ),
+      ),
+    );
+  }
+
+  PopupMenuItem<SortOption> _buildSortItem(SortOption value, String text, IconData icon) {
+    final isSelected = _currentSort == value;
+    return PopupMenuItem<SortOption>(
+      value: value,
+      child: Row(
+        children: [
+          Icon(
+            icon, 
+            size: 20, 
+            color: isSelected ? const Color(0xFF7C4DFF) : Colors.grey[400]
+          ),
+          const SizedBox(width: 12),
+          Text(
+            text,
+            style: TextStyle(
+              color: isSelected ? const Color(0xFF7C4DFF) : Theme.of(context).colorScheme.onSurface,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+        ],
       ),
     );
   }
