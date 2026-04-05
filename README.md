@@ -47,6 +47,12 @@ Inventra is a modern, responsive, and completely standalone local CRUD (Create, 
    flutter run                # Standard mobile execution
    ```
 
+### ❗ TODO 
+
+- Integrate an actual DB using Firebase / Supabase
+- Make a marketplace website to go alongside the app dashboard
+- ~~Remove Herobrine~~
+
 *(Default hardcoded authentication context for dashboard access)*
 > **Username:** `admin`
 > **Password:** `1234`
