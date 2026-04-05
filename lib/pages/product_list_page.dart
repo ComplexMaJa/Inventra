@@ -23,10 +23,11 @@ class _ProductListPageState extends State<ProductListPage> {
   final TextEditingController _searchController = TextEditingController();
   
   bool _isLoading = true;
+  bool _isLowStockFilterActive = false;
 
-  int get _totalProducts => _filteredProducts.length;
-  int get _lowStockCount => _filteredProducts.where((p) => p.stock < 5).length;
-  double get _totalValue => _filteredProducts.fold(0.0, (sum, p) => sum + (p.price * p.stock));
+  int get _totalProducts => _allProducts.length;
+  int get _lowStockCount => _allProducts.where((p) => p.stock < 5).length;
+  double get _totalValue => _allProducts.fold(0.0, (sum, p) => sum + (p.price * p.stock));
 
   @override
   void initState() {
@@ -46,28 +47,38 @@ class _ProductListPageState extends State<ProductListPage> {
 
     setState(() {
       _allProducts = products;
-      _filteredProducts = products;
       _isLoading = false;
-      _listKey = GlobalKey<AnimatedListState>(); 
     });
+    _filterProducts();
   }
 
-  void _filterProducts(String query) {
-    if (query.isEmpty) {
+  void _filterProducts([String? query]) {
+    final currentQuery = query ?? _searchController.text;
+    if (currentQuery.isEmpty && !_isLowStockFilterActive) {
       setState(() {
         _filteredProducts = List.from(_allProducts);
         _listKey = GlobalKey<AnimatedListState>();
       });
     } else {
-      final lowerQuery = query.toLowerCase();
+      final lowerQuery = currentQuery.toLowerCase();
       setState(() {
         _filteredProducts = _allProducts.where((p) {
-          return p.name.toLowerCase().contains(lowerQuery) || 
+          final matchesSearch = lowerQuery.isEmpty || 
+                 p.name.toLowerCase().contains(lowerQuery) || 
                  p.category.toLowerCase().contains(lowerQuery);
+          final matchesStock = !_isLowStockFilterActive || p.stock < 5;
+          return matchesSearch && matchesStock;
         }).toList();
         _listKey = GlobalKey<AnimatedListState>();
       });
     }
+  }
+
+  void _toggleLowStockFilter() {
+    setState(() {
+      _isLowStockFilterActive = !_isLowStockFilterActive;
+    });
+    _filterProducts();
   }
 
   Future<void> _deleteProduct(Product product, int index) async {
@@ -263,6 +274,8 @@ class _ProductListPageState extends State<ProductListPage> {
                     totalProducts: _totalProducts,
                     lowStockCount: _lowStockCount,
                     totalValue: _totalValue,
+                    isLowStockActive: _isLowStockFilterActive,
+                    onLowStockTap: _toggleLowStockFilter,
                   ),
                 ],
                 Expanded(
